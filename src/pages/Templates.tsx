@@ -21,7 +21,7 @@ import {
   FolderOpen,
 } from 'lucide-react';
 import { templateApi, projectApi, qrcodeApi } from '@/api';
-import type { Template, Project, QRCode } from '../../shared/types';
+import type { Template, Project, QRCode, ExportRecord } from '../../shared/types';
 
 const categories = [
   { key: 'all', label: '全部模板', icon: LayoutGrid },
@@ -346,10 +346,16 @@ export default function Templates() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [exportTarget, setExportTarget] = useState<{ id: string; name: string } | null>(null);
+  const [exportRecords, setExportRecords] = useState<ExportRecord[]>([]);
 
   useEffect(() => {
     templateApi.list().then(setTemplates);
+    templateApi.getExportRecords().then(setExportRecords).catch(() => {});
   }, []);
+
+  const loadRecords = () => {
+    templateApi.getExportRecords().then(setExportRecords).catch(() => {});
+  };
 
   const displayed = mockTemplates.filter(
     (t) => activeCategory === 'all' || t.category === activeCategory,
@@ -479,7 +485,53 @@ export default function Templates() {
         </div>
       </div>
 
-      <ExportModal template={exportTarget} onClose={() => setExportTarget(null)} />
+      <ExportModal template={exportTarget} onClose={() => { setExportTarget(null); loadRecords(); }} />
+
+      {exportRecords.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-soft border border-gray-50 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h3 className="font-semibold text-gray-900">导出记录</h3>
+            <p className="text-xs text-gray-500 mt-0.5">历史导出文件，刷新页面后仍可下载</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">导出时间</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">模板名</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">二维码数量</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">格式</th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {exportRecords.map((rec) => (
+                  <tr key={rec.id} className="hover:bg-gray-50/50">
+                    <td className="px-6 py-3 text-sm text-gray-700">{new Date(rec.created_at).toLocaleString()}</td>
+                    <td className="px-6 py-3 text-sm font-medium text-gray-900">{rec.template_name}</td>
+                    <td className="px-6 py-3 text-sm text-gray-700">{rec.qrcode_count} 个</td>
+                    <td className="px-6 py-3">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${rec.format === 'pdf' ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
+                        {rec.format.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3 text-right">
+                      <a
+                        href={templateApi.getDownloadUrl(rec.download_token)}
+                        download
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-50 text-primary-700 rounded-lg hover:bg-primary-100 transition-colors"
+                      >
+                        <Download size={14} />
+                        下载
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

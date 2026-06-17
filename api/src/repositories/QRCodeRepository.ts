@@ -15,11 +15,12 @@ export const QRCodeRepository = {
     status?: string;
     type?: string;
     keyword?: string;
+    tag?: string;
     page: number;
     pageSize: number;
   }): Promise<PagedResponse<QRCode>> {
     const db = await getDb();
-    const { projectId, status, type, keyword, page, pageSize } = params;
+    const { projectId, status, type, keyword, tag, page, pageSize } = params;
     const where: string[] = [];
     const args: any[] = [];
 
@@ -38,6 +39,10 @@ export const QRCodeRepository = {
     if (keyword) {
       where.push('(q.name LIKE ? OR q.content LIKE ?)');
       args.push(`%${keyword}%`, `%${keyword}%`);
+    }
+    if (tag) {
+      where.push('q.tags LIKE ?');
+      args.push(`%${tag}%`);
     }
 
     const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
@@ -104,13 +109,14 @@ export const QRCodeRepository = {
     status: 'active' | 'disabled';
     style_config: QRCodeStyle;
     file_path?: string;
+    tags?: string;
     expiration_date?: string;
   }): Promise<QRCode> {
     const db = await getDb();
     const id = uuidv4();
     dbHelper.run(db,
-      `INSERT INTO qr_codes (id, project_id, name, content, short_code, target_url, type, status, style_config, file_path, expiration_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO qr_codes (id, project_id, name, content, short_code, target_url, type, status, style_config, file_path, tags, expiration_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         data.project_id || null,
@@ -122,6 +128,7 @@ export const QRCodeRepository = {
         data.status,
         JSON.stringify(data.style_config),
         data.file_path || null,
+        data.tags || null,
         data.expiration_date || null,
       ]
     );
@@ -135,8 +142,20 @@ export const QRCodeRepository = {
     status: string;
     expiration_date: string;
     project_id: string;
+    tags: string;
   }>): Promise<QRCode | null> {
     const db = await getDb();
+    if (data.target_url !== undefined) {
+      const old = await this.findById(id);
+      if (old && old.target_url !== data.target_url) {
+        const { UrlChangeLogRepository } = await import('./UrlChangeLogRepository');
+        await UrlChangeLogRepository.create({
+          qrcode_id: id,
+          old_url: old.target_url || '',
+          new_url: data.target_url,
+        });
+      }
+    }
     const fields: string[] = [];
     const values: any[] = [];
     for (const key of Object.keys(data)) {
@@ -160,6 +179,7 @@ export const QRCodeRepository = {
     status: string;
     target_url: string;
     expiration_date: string;
+    tags: string;
   }>): Promise<void> {
     for (const id of ids) {
       await this.update(id, data);

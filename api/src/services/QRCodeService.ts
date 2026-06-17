@@ -148,7 +148,7 @@ export const QRCodeService = {
   },
 
   async batchGenerate(params: {
-    contents: Array<{ url: string; name?: string }>;
+    contents: Array<{ url: string; name?: string; tags?: string }>;
     projectId?: string;
     style: QRCodeStyle;
     isDynamic: boolean;
@@ -172,6 +172,7 @@ export const QRCodeService = {
         type: isDynamic ? 'dynamic' : 'static',
         status: 'active',
         style_config: style,
+        tags: item.tags,
         expiration_date: expirationDate,
       });
       ids.push(qr.id);

@@ -1,22 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Search,
-  Filter,
-  ChevronDown,
-  Edit2,
-  Trash2,
-  Download,
-  Ban,
-  Play,
-  Calendar,
-  Link as LinkIcon,
-  CheckSquare,
-  Square,
-  MoreHorizontal,
-  Eye,
-  X,
-  RefreshCw,
+  Search, Filter, ChevronDown, Trash2, Download, Ban, Play, Calendar,
+  Link as LinkIcon, CheckSquare, Square, MoreHorizontal, Eye, X, RefreshCw, Tag,
 } from 'lucide-react';
 import { qrcodeApi, projectApi } from '@/api';
 import { useAppStore } from '@/store';
@@ -34,15 +20,19 @@ export default function QRCodes() {
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [projectFilter, setProjectFilter] = useState(initialProjectId);
+  const [tagFilter, setTagFilter] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
-  const [showBatchModal, setShowBatchModal] = useState<'url' | 'extend' | null>(null);
+  const [showBatchModal, setShowBatchModal] = useState<'url' | 'extend' | 'tags' | null>(null);
   const [batchUrl, setBatchUrl] = useState('');
   const [batchDate, setBatchDate] = useState('');
+  const [batchTags, setBatchTags] = useState('');
   const { projects, setProjects } = useAppStore();
+
+  const allTags = Array.from(new Set(items.flatMap((i) => (i.tags || '').split(',').map((t) => t.trim()).filter(Boolean))));
 
   const loadData = () => {
     qrcodeApi
-      .list({ page, pageSize, keyword, status: statusFilter, type: typeFilter, projectId: projectFilter })
+      .list({ page, pageSize, keyword, status: statusFilter, type: typeFilter, projectId: projectFilter, tag: tagFilter })
       .then((r) => {
         setItems(r.items);
         setTotal(r.total);
@@ -52,7 +42,7 @@ export default function QRCodes() {
   useEffect(() => {
     loadData();
     projectApi.list().then(setProjects);
-  }, [page, keyword, statusFilter, typeFilter, projectFilter, setProjects]);
+  }, [page, keyword, statusFilter, typeFilter, projectFilter, tagFilter, setProjects]);
 
   const toggleSelect = (id: string) => {
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -62,7 +52,7 @@ export default function QRCodes() {
     else setSelected(items.map((i) => i.id));
   };
 
-  const handleBatch = async (action: 'disable' | 'enable' | 'delete' | 'updateUrl' | 'extend') => {
+  const handleBatch = async (action: 'disable' | 'enable' | 'delete' | 'updateUrl' | 'extend' | 'updateTags') => {
     let payload: any = undefined;
     if (action === 'updateUrl') {
       if (!batchUrl) return;
@@ -72,11 +62,15 @@ export default function QRCodes() {
       if (!batchDate) return;
       payload = { expirationDate: batchDate };
     }
+    if (action === 'updateTags') {
+      payload = { tags: batchTags };
+    }
     await qrcodeApi.batch({ ids: selected, action, payload });
     setSelected([]);
     setShowBatchModal(null);
     setBatchUrl('');
     setBatchDate('');
+    setBatchTags('');
     loadData();
   };
 
@@ -143,6 +137,16 @@ export default function QRCodes() {
                 </option>
               ))}
             </select>
+            <select
+              value={tagFilter}
+              onChange={(e) => setTagFilter(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+            >
+              <option value="">全部标签</option>
+              {allTags.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
           </div>
 
           {selected.length > 0 && (
@@ -168,6 +172,13 @@ export default function QRCodes() {
               >
                 <LinkIcon size={14} />
                 修改跳转URL
+              </button>
+              <button
+                onClick={() => setShowBatchModal('tags')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+              >
+                <Tag size={14} />
+                修改标签
               </button>
               <button
                 onClick={() => setShowBatchModal('extend')}
@@ -203,6 +214,7 @@ export default function QRCodes() {
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">二维码</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">类型</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">状态</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">标签</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">项目</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">扫码数</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">创建时间</th>
@@ -237,6 +249,16 @@ export default function QRCodes() {
                   </td>
                   <td className="px-5 py-4">
                     <StatusBadge status={qr.status} />
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex flex-wrap gap-1">
+                      {(qr.tags || '').split(',').map((t) => t.trim()).filter(Boolean).map((t) => (
+                        <span key={t} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-100">
+                          {t}
+                        </span>
+                      ))}
+                      {!qr.tags && <span className="text-xs text-gray-400">-</span>}
+                    </div>
                   </td>
                   <td className="px-5 py-4">
                     {qr.project ? (
@@ -278,9 +300,6 @@ export default function QRCodes() {
                       >
                         {qr.status === 'active' ? <Ban size={16} /> : <Play size={16} />}
                       </button>
-                      <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-                        <MoreHorizontal size={16} />
-                      </button>
                     </div>
                   </td>
                 </tr>
@@ -318,7 +337,7 @@ export default function QRCodes() {
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-slide-up">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-semibold text-gray-900">
-                {showBatchModal === 'url' ? '批量修改跳转URL' : '批量延期'}
+                {showBatchModal === 'url' ? '批量修改跳转URL' : showBatchModal === 'tags' ? '批量修改标签' : '批量延期'}
               </h3>
               <button onClick={() => setShowBatchModal(null)} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
@@ -331,6 +350,16 @@ export default function QRCodes() {
                   value={batchUrl}
                   onChange={(e) => setBatchUrl(e.target.value)}
                   placeholder="https://example.com/new-target"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+                />
+              </>
+            ) : showBatchModal === 'tags' ? (
+              <>
+                <p className="text-sm text-gray-500 mb-3">为选中的 {selected.length} 个二维码设置标签（逗号分隔，如：营销,展会）</p>
+                <input
+                  value={batchTags}
+                  onChange={(e) => setBatchTags(e.target.value)}
+                  placeholder="标签1,标签2,标签3"
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
                 />
               </>
@@ -353,7 +382,7 @@ export default function QRCodes() {
                 取消
               </button>
               <button
-                onClick={() => handleBatch(showBatchModal === 'url' ? 'updateUrl' : 'extend')}
+                onClick={() => handleBatch(showBatchModal === 'url' ? 'updateUrl' : showBatchModal === 'tags' ? 'updateTags' : 'extend')}
                 className="px-4 py-2 text-sm bg-gradient-to-r from-primary-500 to-accent-400 text-white rounded-lg font-medium"
               >
                 确认

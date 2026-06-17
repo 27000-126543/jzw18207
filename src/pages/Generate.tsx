@@ -46,6 +46,7 @@ export default function Generate() {
   const [generating, setGenerating] = useState(false);
   const [downloadToken, setDownloadToken] = useState<string | null>(null);
   const [expirationDate, setExpirationDate] = useState('');
+  const [tags, setTags] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
@@ -120,7 +121,7 @@ export default function Generate() {
     setDownloadToken(null);
     try {
       const res = await qrcodeApi.batchGenerate({
-        contents: parsedUrls,
+        contents: parsedUrls.map(p => ({ ...p, tags: tags || undefined })),
         projectId: selectedProjectId || undefined,
         style: qrStyle,
         isDynamic,
@@ -160,6 +161,16 @@ export default function Generate() {
                 导入 CSV
               </button>
               <span className="text-xs text-gray-400">支持 .txt 或 .csv 格式，每行一条链接</span>
+            </div>
+            <div className="mt-4">
+              <p className="text-sm font-medium text-gray-700 mb-2">标签（可选）</p>
+              <input
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="输入标签，逗号分隔，如：营销,展会,2024"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
+              />
+              <p className="text-xs text-gray-400 mt-1">生成后可在码库中按标签筛选</p>
             </div>
           </div>
 

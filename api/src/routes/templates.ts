@@ -42,6 +42,26 @@ router.get('/download/:token', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/export-records', async (req: Request, res: Response) => {
+  try {
+    const { ExportRecordRepository } = await import('../repositories/ExportRecordRepository');
+    const records = await ExportRecordRepository.list();
+    res.json(records);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/export-records/:id', async (req: Request, res: Response) => {
+  try {
+    const { ExportRecordRepository } = await import('../repositories/ExportRecordRepository');
+    await ExportRecordRepository.delete(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const tpl = await TemplateRepository.findById(req.params.id);

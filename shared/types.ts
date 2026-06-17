@@ -32,6 +32,7 @@ export interface QRCode {
   style_config: QRCodeStyle;
   file_path?: string;
   expiration_date?: string;
+  tags?: string;
   created_at: string;
   updated_at: string;
   scan_count?: number;
@@ -94,4 +95,22 @@ export interface PagedResponse<T> {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface UrlChangeLog {
+  id: string;
+  qrcode_id: string;
+  old_url: string;
+  new_url: string;
+  created_at: string;
+}
+
+export interface ExportRecord {
+  id: string;
+  template_id: string;
+  template_name: string;
+  qrcode_count: number;
+  format: 'pdf' | 'png';
+  download_token: string;
+  created_at: string;
 }

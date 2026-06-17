@@ -7,12 +7,13 @@ const router = Router();
 
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { projectId, status, type, keyword, page = '1', pageSize = '20' } = req.query;
+    const { projectId, status, type, keyword, tag, page = '1', pageSize = '20' } = req.query;
     const result = await QRCodeRepository.list({
       projectId: projectId as string,
       status: status as string,
       type: type as string,
       keyword: keyword as string,
+      tag: tag as string,
       page: parseInt(page as string),
       pageSize: parseInt(pageSize as string),
     });
@@ -44,6 +45,8 @@ router.post('/batch', async (req: Request, res: Response) => {
       await QRCodeRepository.batchUpdate(ids, { target_url: payload?.targetUrl });
     } else if (action === 'extend') {
       await QRCodeRepository.batchUpdate(ids, { expiration_date: payload?.expirationDate });
+    } else if (action === 'updateTags') {
+      await QRCodeRepository.batchUpdate(ids, { tags: payload?.tags });
     }
     res.json({ success: true });
   } catch (err: any) {
@@ -56,6 +59,16 @@ router.get('/download/:token', async (req: Request, res: Response) => {
     const filePath = await QRCodeService.getDownloadPath(req.params.token);
     if (!filePath) return res.status(404).json({ error: 'Not found' });
     res.download(filePath, 'qrcodes.zip');
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:id/change-logs', async (req: Request, res: Response) => {
+  try {
+    const { UrlChangeLogRepository } = await import('../repositories/UrlChangeLogRepository');
+    const logs = await UrlChangeLogRepository.findByQRCodeId(req.params.id);
+    res.json(logs);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

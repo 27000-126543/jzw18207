@@ -4,11 +4,13 @@ import type {
   QRCode,
   QRCodeStyle,
   Template,
+  ExportRecord,
   AnalyticsSummary,
   TrendDataPoint,
   GeoData,
   DeviceData,
   ScanLog,
+  UrlChangeLog,
   PagedResponse,
 } from '../../shared/types';
 
@@ -18,6 +20,7 @@ export const qrcodeApi = {
     status?: string;
     type?: string;
     keyword?: string;
+    tag?: string;
     page?: number;
     pageSize?: number;
   }): Promise<PagedResponse<QRCode>> =>
@@ -27,13 +30,15 @@ export const qrcodeApi = {
 
   getScans: (id: string): Promise<ScanLog[]> => api.get(`/qrcodes/${id}/scans`),
 
+  getChangeLogs: (id: string): Promise<UrlChangeLog[]> => api.get(`/qrcodes/${id}/change-logs`),
+
   update: (id: string, data: Partial<QRCode>): Promise<QRCode> =>
     api.put(`/qrcodes/${id}`, data),
 
   remove: (id: string): Promise<void> => api.delete(`/qrcodes/${id}`),
 
   batchGenerate: (data: {
-    contents: Array<{ url: string; name?: string }>;
+    contents: Array<{ url: string; name?: string; tags?: string }>;
     projectId?: string;
     style: QRCodeStyle;
     isDynamic: boolean;
@@ -43,7 +48,7 @@ export const qrcodeApi = {
 
   batch: (data: {
     ids: string[];
-    action: 'disable' | 'enable' | 'delete' | 'updateUrl' | 'extend';
+    action: 'disable' | 'enable' | 'delete' | 'updateUrl' | 'extend' | 'updateTags';
     payload?: any;
   }): Promise<void> => api.post('/qrcodes/batch', data),
 
@@ -99,4 +104,6 @@ export const templateApi = {
   }): Promise<{ success: boolean; downloadToken: string; format: string }> =>
     api.post('/templates/export', data),
   getDownloadUrl: (token: string) => `/api/templates/download/${token}`,
+  getExportRecords: (): Promise<ExportRecord[]> => api.get('/templates/export-records'),
+  deleteExportRecord: (id: string): Promise<void> => api.delete(`/templates/export-records/${id}`),
 };

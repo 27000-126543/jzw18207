@@ -1,5 +1,5 @@
 import QRCode from 'qrcode';
-import { PDFDocument, rgb, StandardFonts, PDFFont } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
 import fs from 'fs';
 import path from 'path';
@@ -51,13 +51,6 @@ const templateConfigs: Record<string, TemplateConfig> = {
 
 function mmToPt(mm: number): number {
   return mm * 2.835;
-}
-
-function hexToRgb(hex: string): [number, number, number] {
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
-  return [r, g, b];
 }
 
 const MM_TO_PX = 3.78;
@@ -136,48 +129,29 @@ export const TemplateExportService = {
     }
     if (qrcodes.length === 0) throw new Error('No QR codes found');
 
+    let token: string;
     if (format === 'pdf') {
-      return this.exportPDF(config, qrcodes);
+      token = await this.exportPDF(config, qrcodes);
     } else {
-      return this.exportImages(templateId, config, qrcodes);
+      token = await this.exportImages(templateId, config, qrcodes);
     }
+
+    const { ExportRecordRepository } = await import('../repositories/ExportRecordRepository');
+    await ExportRecordRepository.create({
+      template_id: templateId,
+      template_name: config.title,
+      qrcode_count: qrcodes.length,
+      format,
+      download_token: token,
+    });
+
+    return token;
   },
 
   async exportPDF(config: TemplateConfig, qrcodes: any[]): Promise<string> {
     const pdfDoc = await PDFDocument.create();
-    
-    let fontBytes: Uint8Array | null = null;
-    const fontPaths = [
-      'C:\\Windows\\Fonts\\simhei.ttf',
-      'C:\\Windows\\Fonts\\simsunb.ttf',
-      'C:\\Windows\\Fonts\\SimsunExtG.ttf',
-    ];
-    for (const fp of fontPaths) {
-      if (fs.existsSync(fp)) {
-        fontBytes = fs.readFileSync(fp);
-        break;
-      }
-    }
-    
-    let chineseFont: PDFFont;
-    if (fontBytes) {
-      try {
-        chineseFont = await pdfDoc.embedFont(fontBytes);
-      } catch (_e) {
-        console.warn('Failed to embed Chinese font, using Helvetica');
-        chineseFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      }
-    } else {
-      chineseFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    }
 
     for (const qr of qrcodes) {
-      const page = pdfDoc.addPage([mmToPt(config.width), mmToPt(config.height)]);
-      const { width, height } = page.getSize();
-      const [bgR, bgG, bgB] = hexToRgb(config.bgGradient[0]);
-
-      page.drawRectangle({ x: 0, y: 0, width, height, color: rgb(bgR, bgG, bgB) });
-
       const qrContent = qr.content || qr.target_url || '';
       const qrBuffer = await QRCode.toBuffer(qrContent, {
         width: 600,
@@ -185,43 +159,28 @@ export const TemplateExportService = {
         errorCorrectionLevel: 'M',
         color: { dark: '#000000', light: '#ffffff' },
       });
-      const qrImage = await pdfDoc.embedPng(qrBuffer);
-      const qrPtSize = mmToPt(config.qrSize);
-      page.drawImage(qrImage, {
-        x: mmToPt(config.qrX),
-        y: mmToPt(config.qrY),
-        width: qrPtSize,
-        height: qrPtSize,
-      });
-
-      page.drawText(config.title, {
-        x: mmToPt(config.qrX),
-        y: mmToPt(config.titleY),
-        size: config.titleSize,
-        font: chineseFont,
-        color: rgb(1, 1, 1),
-      });
-
-      if (config.subtitle) {
-        page.drawText(config.subtitle, {
-          x: mmToPt(config.qrX),
-          y: mmToPt(config.titleY) - config.titleSize - 4,
-          size: config.titleSize * 0.5,
-          font: chineseFont,
-          color: rgb(0.9, 0.9, 0.9),
-        });
-      }
-
       const qrName = qr.name || '';
-      if (qrName) {
-        page.drawText(qrName, {
-          x: mmToPt(config.qrX),
-          y: mmToPt(config.qrY) - 16,
-          size: 9,
-          font: chineseFont,
-          color: rgb(0.9, 0.9, 0.9),
-        });
+      const templateImageBuffer = await drawTemplateCanvas(config, qrBuffer, qrName);
+
+      const pngImage = await pdfDoc.embedPng(templateImageBuffer);
+      const pageWidth = mmToPt(config.width);
+      const pageHeight = mmToPt(config.height);
+
+      const imgAspect = config.width / config.height;
+      let drawWidth = pageWidth;
+      let drawHeight = pageWidth / imgAspect;
+      if (drawHeight > pageHeight) {
+        drawHeight = pageHeight;
+        drawWidth = pageHeight * imgAspect;
       }
+
+      const page = pdfDoc.addPage([pageWidth, pageHeight]);
+      page.drawImage(pngImage, {
+        x: 0,
+        y: 0,
+        width: drawWidth,
+        height: drawHeight,
+      });
     }
 
     const pdfBytes = await pdfDoc.save();

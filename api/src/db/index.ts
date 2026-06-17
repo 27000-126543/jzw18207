@@ -119,6 +119,7 @@ export async function initDB() {
       status TEXT NOT NULL DEFAULT 'active',
       style_config TEXT NOT NULL DEFAULT '{}',
       file_path TEXT,
+      tags TEXT DEFAULT '',
       expiration_date DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -127,6 +128,28 @@ export async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_qr_codes_project ON qr_codes(project_id);
     CREATE INDEX IF NOT EXISTS idx_qr_codes_status ON qr_codes(status);
     CREATE INDEX IF NOT EXISTS idx_qr_codes_short_code ON qr_codes(short_code);
+
+    CREATE TABLE IF NOT EXISTS url_change_logs (
+      id TEXT PRIMARY KEY,
+      qrcode_id TEXT NOT NULL REFERENCES qr_codes(id) ON DELETE CASCADE,
+      old_url TEXT NOT NULL DEFAULT '',
+      new_url TEXT NOT NULL DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_url_change_logs_qrcode ON url_change_logs(qrcode_id);
+
+    CREATE TABLE IF NOT EXISTS export_records (
+      id TEXT PRIMARY KEY,
+      template_id TEXT NOT NULL,
+      template_name TEXT NOT NULL DEFAULT '',
+      qrcode_count INTEGER NOT NULL DEFAULT 0,
+      format TEXT NOT NULL DEFAULT 'pdf',
+      download_token TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_export_records_template ON export_records(template_id);
 
     CREATE TABLE IF NOT EXISTS scan_logs (
       id TEXT PRIMARY KEY,
