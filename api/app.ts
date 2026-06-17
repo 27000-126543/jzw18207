@@ -5,6 +5,7 @@ import { initDB } from './src/db';
 import { QRCodeRepository } from './src/repositories/QRCodeRepository';
 import { ScanRepository } from './src/repositories/ScanRepository';
 import { parseUserAgent, getClientIp } from './src/utils/ua-parser';
+import { parseIPLocation } from './src/utils/ip-location';
 
 import qrcodeRoutes from './src/routes/qrcodes';
 import projectRoutes from './src/routes/projects';
@@ -32,6 +33,7 @@ app.get('/r/:code', async (req, res) => {
 
     const ua = parseUserAgent(req.headers['user-agent'] || '');
     const ip = getClientIp(req);
+    const location = parseIPLocation(ip);
     await ScanRepository.create({
       qrcode_id: qr.id,
       ip_address: ip,
@@ -39,6 +41,8 @@ app.get('/r/:code', async (req, res) => {
       device_type: ua.device_type,
       os: ua.os,
       browser: ua.browser,
+      province: location.province,
+      city: location.city,
     });
 
     const targetUrl = qr.target_url || qr.content;

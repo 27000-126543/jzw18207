@@ -1,9 +1,10 @@
 import QRCode from 'qrcode';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, PDFFont } from 'pdf-lib';
 import JSZip from 'jszip';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { QRCodeRepository } from '../repositories/QRCodeRepository';
 
 const outputDir = path.resolve(process.cwd(), 'qr-codes');
@@ -59,6 +60,66 @@ function hexToRgb(hex: string): [number, number, number] {
   return [r, g, b];
 }
 
+const MM_TO_PX = 3.78;
+
+function mmToPx(mm: number): number {
+  return mm * MM_TO_PX;
+}
+
+function hexToRgba(hex: string, alpha: number = 1): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+async function drawTemplateCanvas(
+  config: TemplateConfig,
+  qrBuffer: Buffer,
+  qrName: string,
+): Promise<Buffer> {
+  const canvasWidth = mmToPx(config.width);
+  const canvasHeight = mmToPx(config.height);
+  const canvas = createCanvas(canvasWidth, canvasHeight);
+  const ctx = canvas.getContext('2d');
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight);
+  gradient.addColorStop(0, hexToRgba(config.bgGradient[0]));
+  gradient.addColorStop(1, hexToRgba(config.bgGradient[1]));
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  const titleX = mmToPx(config.qrX);
+  const titleY = mmToPx(config.titleY);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${config.titleSize}px sans-serif`;
+  ctx.textBaseline = 'top';
+  ctx.fillText(config.title, titleX, titleY);
+
+  if (config.subtitle) {
+    const subtitleSize = config.titleSize * 0.5;
+    const subtitleY = titleY + config.titleSize + 4;
+    ctx.fillStyle = 'rgba(230, 230, 230, 0.9)';
+    ctx.font = `${subtitleSize}px sans-serif`;
+    ctx.fillText(config.subtitle, titleX, subtitleY);
+  }
+
+  const qrImage = await loadImage(qrBuffer);
+  const qrX = mmToPx(config.qrX);
+  const qrY = mmToPx(config.qrY);
+  const qrSize = mmToPx(config.qrSize);
+  ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+
+  if (qrName) {
+    const nameY = mmToPx(config.qrY - 8);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '9px sans-serif';
+    ctx.fillText(qrName, qrX, nameY);
+  }
+
+  return canvas.toBuffer('image/png');
+}
+
 export const TemplateExportService = {
   async exportWithQRCodes(
     templateId: string,
@@ -78,14 +139,37 @@ export const TemplateExportService = {
     if (format === 'pdf') {
       return this.exportPDF(config, qrcodes);
     } else {
-      return this.exportImages(config, qrcodes);
+      return this.exportImages(templateId, config, qrcodes);
     }
   },
 
   async exportPDF(config: TemplateConfig, qrcodes: any[]): Promise<string> {
     const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    
+    let fontBytes: Uint8Array | null = null;
+    const fontPaths = [
+      'C:\\Windows\\Fonts\\simhei.ttf',
+      'C:\\Windows\\Fonts\\simsunb.ttf',
+      'C:\\Windows\\Fonts\\SimsunExtG.ttf',
+    ];
+    for (const fp of fontPaths) {
+      if (fs.existsSync(fp)) {
+        fontBytes = fs.readFileSync(fp);
+        break;
+      }
+    }
+    
+    let chineseFont: PDFFont;
+    if (fontBytes) {
+      try {
+        chineseFont = await pdfDoc.embedFont(fontBytes);
+      } catch (_e) {
+        console.warn('Failed to embed Chinese font, using Helvetica');
+        chineseFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      }
+    } else {
+      chineseFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    }
 
     for (const qr of qrcodes) {
       const page = pdfDoc.addPage([mmToPt(config.width), mmToPt(config.height)]);
@@ -114,7 +198,7 @@ export const TemplateExportService = {
         x: mmToPt(config.qrX),
         y: mmToPt(config.titleY),
         size: config.titleSize,
-        font: fontBold,
+        font: chineseFont,
         color: rgb(1, 1, 1),
       });
 
@@ -123,7 +207,7 @@ export const TemplateExportService = {
           x: mmToPt(config.qrX),
           y: mmToPt(config.titleY) - config.titleSize - 4,
           size: config.titleSize * 0.5,
-          font,
+          font: chineseFont,
           color: rgb(0.9, 0.9, 0.9),
         });
       }
@@ -134,7 +218,7 @@ export const TemplateExportService = {
           x: mmToPt(config.qrX),
           y: mmToPt(config.qrY) - 16,
           size: 9,
-          font,
+          font: chineseFont,
           color: rgb(0.9, 0.9, 0.9),
         });
       }
@@ -147,7 +231,11 @@ export const TemplateExportService = {
     return token;
   },
 
-  async exportImages(config: TemplateConfig, qrcodes: any[]): Promise<string> {
+  async exportImages(
+    templateId: string,
+    config: TemplateConfig,
+    qrcodes: any[],
+  ): Promise<string> {
     const zip = new JSZip();
 
     for (const qr of qrcodes) {
@@ -158,8 +246,12 @@ export const TemplateExportService = {
         errorCorrectionLevel: 'M',
         color: { dark: '#000000', light: '#ffffff' },
       });
-      const fileName = `${(qr.name || qr.id).replace(/[\\/:*?"<>|]/g, '_')}.png`;
-      zip.file(fileName, qrBuffer);
+      const qrName = qr.name || qr.id || '';
+      const templateBuffer = await drawTemplateCanvas(config, qrBuffer, qrName);
+      const cleanTemplateId = templateId.replace(/[\\/:*?"<>|]/g, '_');
+      const cleanQrName = qrName.replace(/[\\/:*?"<>|]/g, '_');
+      const fileName = `${cleanTemplateId}_${cleanQrName}.png`;
+      zip.file(fileName, templateBuffer);
     }
 
     const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });

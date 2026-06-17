@@ -16,26 +16,49 @@ function generateShortCode(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
-function applyRoundedMask(ctx: SKRSContext2D, width: number, height: number, radius: number) {
+function drawRoundedRect(ctx: SKRSContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
-  ctx.moveTo(radius, 0);
-  ctx.lineTo(width - radius, 0);
-  ctx.quadraticCurveTo(width, 0, width, radius);
-  ctx.lineTo(width, height - radius);
-  ctx.quadraticCurveTo(width, height, width - radius, height);
-  ctx.lineTo(radius, height);
-  ctx.quadraticCurveTo(0, height, 0, height - radius);
-  ctx.lineTo(0, radius);
-  ctx.quadraticCurveTo(0, 0, radius, 0);
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
-  ctx.clip();
+  ctx.fill();
 }
 
-function applyCircleMask(ctx: SKRSContext2D, cx: number, cy: number, r: number) {
+function drawDot(ctx: SKRSContext2D, cx: number, cy: number, r: number) {
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.closePath();
-  ctx.clip();
+  ctx.fill();
+}
+
+function applyOuterShapeMask(ctx: SKRSContext2D, width: number, height: number, shape: string) {
+  if (shape === 'circle') {
+    ctx.beginPath();
+    ctx.arc(width / 2, height / 2, width / 2, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+  } else if (shape === 'rounded') {
+    const r = width * 0.08;
+    ctx.beginPath();
+    ctx.moveTo(r, 0);
+    ctx.lineTo(width - r, 0);
+    ctx.quadraticCurveTo(width, 0, width, r);
+    ctx.lineTo(width, height - r);
+    ctx.quadraticCurveTo(width, height, width - r, height);
+    ctx.lineTo(r, height);
+    ctx.quadraticCurveTo(0, height, 0, height - r);
+    ctx.lineTo(0, r);
+    ctx.quadraticCurveTo(0, 0, r, 0);
+    ctx.closePath();
+    ctx.clip();
+  }
 }
 
 export const QRCodeService = {
@@ -43,34 +66,52 @@ export const QRCodeService = {
     const size = style.size || 300;
     const margin = Math.round(size * 0.06);
     const canvasSize = size + margin * 2;
+    const foreground = style.color.foreground || '#000000';
+    const background = style.color.background || '#ffffff';
 
-    const qrDataUrl: string = await QRCode.toDataURL(content, {
+    const qrData = QRCode.create(content, {
       errorCorrectionLevel: style.errorCorrectionLevel || 'M',
-      width: size,
-      margin: 0,
-      color: {
-        dark: style.color.foreground || '#000000',
-        light: style.color.background || '#ffffff',
-      },
     });
 
-    const qrImage = await loadImage(qrDataUrl);
+    const matrix = qrData.modules.data;
+    const matrixSize = qrData.modules.size;
+    const moduleSize = size / matrixSize;
 
     const mainCanvas = createCanvas(canvasSize, canvasSize);
     const ctx = mainCanvas.getContext('2d');
 
     ctx.save();
-    if (style.shape === 'circle') {
-      applyCircleMask(ctx, canvasSize / 2, canvasSize / 2, canvasSize / 2);
-    } else if (style.shape === 'rounded') {
-      const r = canvasSize * 0.08;
-      applyRoundedMask(ctx, canvasSize, canvasSize, r);
-    }
+    applyOuterShapeMask(ctx, canvasSize, canvasSize, style.shape || 'square');
 
-    ctx.fillStyle = style.color.background || '#ffffff';
+    ctx.fillStyle = background;
     ctx.fillRect(0, 0, canvasSize, canvasSize);
 
-    ctx.drawImage(qrImage, margin, margin, size, size);
+    ctx.fillStyle = foreground;
+    const shape = style.shape || 'square';
+
+    for (let row = 0; row < matrixSize; row++) {
+      for (let col = 0; col < matrixSize; col++) {
+        const idx = row * matrixSize + col;
+        if (!matrix[idx]) continue;
+
+        const x = margin + col * moduleSize;
+        const y = margin + row * moduleSize;
+        const w = moduleSize;
+        const h = moduleSize;
+
+        if (shape === 'circle') {
+          const cx = x + w / 2;
+          const cy = y + h / 2;
+          const r = w / 2 - 0.5;
+          drawDot(ctx, cx, cy, r);
+        } else if (shape === 'rounded') {
+          const r = w * 0.3;
+          drawRoundedRect(ctx, x, y, w, h, r);
+        } else {
+          ctx.fillRect(x, y, w, h);
+        }
+      }
+    }
 
     if (style.logo) {
       const logoSize = Math.round(size * 0.25);
@@ -79,7 +120,7 @@ export const QRCodeService = {
       const padding = Math.round(logoSize * 0.15);
       const cornerRadius = Math.round(padding * 0.5);
 
-      ctx.fillStyle = style.color.background || '#ffffff';
+      ctx.fillStyle = background;
       ctx.beginPath();
       ctx.moveTo(logoX - padding + cornerRadius, logoY - padding);
       ctx.lineTo(logoX + logoSize + padding - cornerRadius, logoY - padding);
