@@ -22,6 +22,45 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+router.post('/batch-generate', async (req: Request, res: Response) => {
+  try {
+    const result = await QRCodeService.batchGenerate(req.body);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/batch', async (req: Request, res: Response) => {
+  try {
+    const { ids, action, payload } = req.body;
+    if (action === 'disable') {
+      await QRCodeRepository.batchUpdate(ids, { status: 'disabled' });
+    } else if (action === 'enable') {
+      await QRCodeRepository.batchUpdate(ids, { status: 'active' });
+    } else if (action === 'delete') {
+      await QRCodeRepository.batchDelete(ids);
+    } else if (action === 'updateUrl') {
+      await QRCodeRepository.batchUpdate(ids, { target_url: payload?.targetUrl });
+    } else if (action === 'extend') {
+      await QRCodeRepository.batchUpdate(ids, { expiration_date: payload?.expirationDate });
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/download/:token', async (req: Request, res: Response) => {
+  try {
+    const filePath = await QRCodeService.getDownloadPath(req.params.token);
+    if (!filePath) return res.status(404).json({ error: 'Not found' });
+    res.download(filePath, 'qrcodes.zip');
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const qr = await QRCodeRepository.findById(req.params.id);
@@ -65,45 +104,6 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     await QRCodeRepository.delete(req.params.id);
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/batch-generate', async (req: Request, res: Response) => {
-  try {
-    const result = await QRCodeService.batchGenerate(req.body);
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/batch', async (req: Request, res: Response) => {
-  try {
-    const { ids, action, payload } = req.body;
-    if (action === 'disable') {
-      await QRCodeRepository.batchUpdate(ids, { status: 'disabled' });
-    } else if (action === 'enable') {
-      await QRCodeRepository.batchUpdate(ids, { status: 'active' });
-    } else if (action === 'delete') {
-      await QRCodeRepository.batchDelete(ids);
-    } else if (action === 'updateUrl') {
-      await QRCodeRepository.batchUpdate(ids, { target_url: payload?.targetUrl });
-    } else if (action === 'extend') {
-      await QRCodeRepository.batchUpdate(ids, { expiration_date: payload?.expirationDate });
-    }
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get('/download/:token', async (req: Request, res: Response) => {
-  try {
-    const filePath = await QRCodeService.getDownloadPath(req.params.token);
-    if (!filePath) return res.status(404).json({ error: 'Not found' });
-    res.download(filePath, 'qrcodes.zip');
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

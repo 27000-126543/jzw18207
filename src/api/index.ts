@@ -92,4 +92,11 @@ export const templateApi = {
   update: (id: string, data: Partial<Template>): Promise<Template> =>
     api.put(`/templates/${id}`, data),
   remove: (id: string): Promise<void> => api.delete(`/templates/${id}`),
+  exportWithQR: (data: {
+    templateId: string;
+    qrcodeIds: string[];
+    format: 'pdf' | 'png';
+  }): Promise<{ success: boolean; downloadToken: string; format: string }> =>
+    api.post('/templates/export', data),
+  getDownloadUrl: (token: string) => `/api/templates/download/${token}`,
 };

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import {
   Upload,
@@ -12,6 +12,7 @@ import {
   FileText,
   Check,
   Loader2,
+  X,
 } from 'lucide-react';
 import { qrcodeApi, projectApi } from '@/api';
 import { useAppStore } from '@/store';
@@ -45,6 +46,24 @@ export default function Generate() {
   const [generating, setGenerating] = useState(false);
   const [downloadToken, setDownloadToken] = useState<string | null>(null);
   const [expirationDate, setExpirationDate] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const dataUrl = evt.target?.result as string;
+      setQrStyle({ logo: dataUrl });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }, [setQrStyle]);
+
+  const handleRemoveLogo = useCallback(() => {
+    setQrStyle({ logo: undefined });
+  }, [setQrStyle]);
 
   useEffect(() => {
     projectApi.list().then(setProjects);
@@ -55,8 +74,41 @@ export default function Generate() {
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
-      .map((url) => ({ url }));
+      .map((line) => {
+        if (line.includes('|')) {
+          const [name, url] = line.split('|').map(s => s.trim());
+          return { url, name };
+        }
+        return { url: line };
+      });
   }, [urlsText]);
+
+  const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      let startIdx = 0;
+      const firstLine = lines[0].toLowerCase();
+      if (firstLine.includes('url') || firstLine.includes('链接') || firstLine.includes('name') || firstLine.includes('名称')) {
+        startIdx = 1;
+      }
+      const entries: string[] = [];
+      for (let i = startIdx; i < lines.length; i++) {
+        const parts = lines[i].split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+        if (parts.length >= 2 && parts[1]) {
+          entries.push(`${parts[1]}|${parts[0]}`);
+        } else if (parts[0]) {
+          entries.push(parts[0]);
+        }
+      }
+      setUrlsText(entries.join('\n'));
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   const previewContent = isDynamic
     ? `http://localhost:5173/r/preview`
@@ -102,7 +154,8 @@ export default function Generate() {
               className="w-full h-44 px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400 transition-all resize-none"
             />
             <div className="flex items-center gap-3 mt-3">
-              <button className="inline-flex items-center gap-2 px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
+              <input ref={fileInputRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVImport} />
+              <button onClick={() => fileInputRef.current?.click()} className="inline-flex items-center gap-2 px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
                 <Upload size={16} />
                 导入 CSV
               </button>
@@ -277,12 +330,32 @@ export default function Generate() {
                 />
               </div>
 
-              <div className="flex items-center gap-2 p-4 bg-amber-50 border border-amber-100 rounded-xl">
-                <Image size={18} className="text-amber-600" />
-                <div>
-                  <p className="text-sm font-medium text-amber-900">Logo 上传</p>
-                  <p className="text-xs text-amber-700 mt-0.5">上传 Logo 图片会自动嵌入二维码中心（建议使用高纠错级别）</p>
-                </div>
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                  <Image size={16} />
+                  Logo 上传
+                </p>
+                <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                {qrStyle.logo ? (
+                  <div className="flex items-center gap-3 p-3 bg-primary-50 border border-primary-100 rounded-xl">
+                    <img src={qrStyle.logo} alt="Logo" className="w-10 h-10 object-contain rounded" />
+                    <span className="text-sm text-primary-700 flex-1 truncate">已上传 Logo</span>
+                    <button onClick={handleRemoveLogo} className="p-1 hover:bg-primary-100 rounded-lg transition-colors">
+                      <X size={16} className="text-primary-500" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => logoInputRef.current?.click()}
+                    className="w-full flex items-center gap-3 p-4 bg-amber-50 border border-amber-100 rounded-xl hover:bg-amber-100 transition-colors"
+                  >
+                    <Upload size={18} className="text-amber-600" />
+                    <div className="text-left">
+                      <p className="text-sm font-medium text-amber-900">点击上传 Logo</p>
+                      <p className="text-xs text-amber-700">嵌入二维码中心，建议使用高纠错级别</p>
+                    </div>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -295,7 +368,7 @@ export default function Generate() {
               className="rounded-2xl p-8 flex items-center justify-center mb-5"
               style={{ backgroundColor: qrStyle.color.background }}
             >
-              <div className="animate-fade-in" style={{ borderRadius: qrStyle.shape === 'circle' ? '50%' : qrStyle.shape === 'rounded' ? '16px' : '0', overflow: 'hidden', padding: 8, backgroundColor: qrStyle.color.background }}>
+              <div className="animate-fade-in relative" style={{ borderRadius: qrStyle.shape === 'circle' ? '50%' : qrStyle.shape === 'rounded' ? '16px' : '0', overflow: 'hidden', padding: 8, backgroundColor: qrStyle.color.background }}>
                 <QRCodeCanvas
                   value={previewContent}
                   size={Math.min(qrStyle.size, 240)}
@@ -304,6 +377,16 @@ export default function Generate() {
                   bgColor={qrStyle.color.background}
                   includeMargin={false}
                 />
+                {qrStyle.logo && (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                    style={{ margin: 8 }}
+                  >
+                    <div className="flex items-center justify-center" style={{ width: '25%', height: '25%', backgroundColor: qrStyle.color.background, borderRadius: 4, padding: 2 }}>
+                      <img src={qrStyle.logo} alt="Logo" className="w-full h-full object-contain" />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
