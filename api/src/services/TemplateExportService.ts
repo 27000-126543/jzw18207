@@ -137,9 +137,12 @@ export const TemplateExportService = {
     }
 
     const { ExportRecordRepository } = await import('../repositories/ExportRecordRepository');
+    const { TemplateRepository } = await import('../repositories/TemplateRepository');
+    const tpl = await TemplateRepository.findById(templateId);
+    const templateName = tpl?.name || templateId;
     await ExportRecordRepository.create({
       template_id: templateId,
-      template_name: config.title,
+      template_name: templateName,
       qrcode_count: qrcodes.length,
       format,
       download_token: token,
